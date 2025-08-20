@@ -1,4 +1,6 @@
-﻿var builder = WebApplication.CreateBuilder(args);
+﻿using UserManagementApi.Middleware;
+
+var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -6,42 +8,40 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+
+// ilk başa global error handling middleware koydum
+// bütün yakalanmamış hataları topluyor ve json response dönüyor
+app.UseMiddleware<ErrorHandlingMiddleware>();
+
+// http isteklerini otomatik https'e yönlendiriyor
+// güvenlik için ekledim
+app.UseHttpsRedirection();
+
+// swagger sadece dev ortamında aktif
+// auth'tan önce koydum ki kolayca erişebileyim
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-/*
- özellik: global exception handler middleware eklendi
+// token authentication middleware
+// header'dan bearer token kontrol ediyor
+// geçersizse 401 dönüyor, doğruysa devam
+app.UseMiddleware<TokenAuthenticationMiddleware>();
 
-- app.UseExceptionHandler ile yakalanmayan hatalar için global hata yakalama eklendi
-- Yanıt RFC 7807 standardına uygun ProblemDetails JSON formatında döndürülüyor
-- API’nin çökmesi engellendi, 500 hataları artık tutarlı şekilde dönüyor
-- Güvenilirlik artırıldı ve hata ayıklama süreci kolaylaştırıldı
-*/
-app.UseExceptionHandler(errorApp =>
-{
-    errorApp.Run(async context =>
-    {
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        context.Response.ContentType = "application/problem+json";
-
-        var problem = Results.Problem(
-            title : "Unexpected problem.",
-            statusCode:StatusCodes.Status500InternalServerError
-            );
-
-        await problem.ExecuteAsync(context);    
-    });
-});
-
-app.UseHttpsRedirection();
-
+// authorization middleware
+// şimdilik çok işlevi yok ama ileride [Authorize] eklersem lazım olur
 app.UseAuthorization();
 
+// http logging middleware
+// method, path ve status code logluyor
+// en sona koydum ki gerçek status code'u yakalasın
+app.UseMiddleware<HttpLoggingMiddleware>();
+
+// controller ve endpoint mapping
 app.MapControllers();
+
 
 var users = new List<User>
 {
